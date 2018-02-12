@@ -7,8 +7,8 @@ from digitsRecognizer import DigitsRecognizer
 import math
 from PatchArea import PatchArea
 from ChessBoardArea import ChessBoardArea
-
-
+import random
+import copy
 
 def colorEquilibrium(img):
     iBlueGray = np.zeros(shape=(256,1),dtype = np.uint32)
@@ -157,10 +157,10 @@ class CornerDetector(object):
 
 
     #patch is 53 for
-    def __cropRect(self,img,rect,patchsize = 54):
-        assert rect.shape == (4,1,2)
+    def __cropRect(self,img,arect,patchsize = 54):
+        assert arect.shape == (4,1,2)
         #cropimg = np.zeros(shape=(patchsize,patchsize,3),dtype="uint8")
-
+        rect = copy.deepcopy(arect)
         rect = rect.reshape(4,2)
         #rect = np.flip(rect,1)
         t = np.copy(rect[2, :])
@@ -352,7 +352,9 @@ class CornerDetector(object):
     def __rotateRectLeft90D(self,rect):
         arect = np.copy(rect)
         temp = arect[0,0,:]
-        arect[0,0,:] = arect[3,0,:]
+        arect[0,0,:] = arect[1,0,:]
+        arect[1,0,:] = arect[2,0,:]
+        arect[2,0,:] = arect[3,0,:]
         arect[3,0,:] = temp
         return arect
 
@@ -426,6 +428,210 @@ class CornerDetector(object):
 
 
 
+    def __findRectsAround(self,target,rectAreaGroup):
+        NorthRect = None
+        SourthRect = None
+        EastRect = None
+        WestRect = None
+        center = np.array([np.mean(target.rect[:, :, 0]), np.mean(target.rect[:, :, 1])])
+        sum = 0.0
+        for i in range(target.rect.shape[0]):
+            sum += np.sqrt(np.square(center[0] - target.rect[i, 0, 0]) + np.square(center[1] - target.rect[i, 0, 1]))
+
+        meanR = sum/float(target.rect.shape[0])
+
+        leftAreaGroup = []
+        aroundRectList = []
+        for rectArea in rectAreaGroup:
+            if distofTwoPoints(rectArea.rect[0,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[3,0,:],target.rect[1,0,:]) < meanR:
+                NorthRect = rectArea
+                NorthRect.order = target.order - self._chessboardsize[1]
+                NorthRect.rect = np.array([[rectArea.rect[1,0,:]],[rectArea.rect[2,0,:]],[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]]])
+                NorthRect.hasAround[2] = True
+                target.hasAround[0] = True
+                aroundRectList.append(NorthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[0,0,:],target.rect[1,0,:]) < meanR and distofTwoPoints(rectArea.rect[3,0,:],target.rect[2,0,:]) < meanR:
+                EastRect = rectArea
+                EastRect.order = target.order + 1
+                EastRect.hasAround[3] = True
+                target.hasAround[1] = True
+                aroundRectList.append(EastRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[3,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[2,0,:],target.rect[1,0,:]) < meanR:
+                NorthRect = rectArea
+                NorthRect.order = target.order - self._chessboardsize[1]
+                NorthRect.hasAround[2] = True
+                target.hasAround[0] = True
+                aroundRectList.append(NorthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[3,0,:],target.rect[1,0,:]) < meanR and distofTwoPoints(rectArea.rect[2,0,:],target.rect[2,0,:]) < meanR:
+                EastRect = rectArea
+                EastRect.order = target.order + 1
+                EastRect.rect = np.array([[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]],[rectArea.rect[2,0,:]]])
+                EastRect.hasAround[3] = True
+                target.hasAround[1] = True
+                aroundRectList.append(EastRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[2,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[1,0,:],target.rect[1,0,:]) < meanR:
+                NorthRect = rectArea
+                NorthRect.order = target.order - self._chessboardsize[1]
+                NorthRect.rect = np.array([[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]],[rectArea.rect[2,0,:]]])
+                NorthRect.hasAround[2] = True
+                aroundRectList.append(NorthRect)
+                target.hasAround[0] = True
+                continue
+            elif distofTwoPoints(rectArea.rect[2,0,:],target.rect[1,0,:]) < meanR and distofTwoPoints(rectArea.rect[1,0,:],target.rect[2,0,:]) < meanR:
+                EastRect = rectArea
+                EastRect.order = target.order + 1
+                EastRect.rect = np.array([[rectArea.rect[2,0,:]],[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]]])
+                EastRect.hasAround[3] = True
+                target.hasAround[1] = True
+                aroundRectList.append(EastRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[1,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[0,0,:],target.rect[1,0,:]) < meanR:
+                NorthRect = rectArea
+                NorthRect.order = target.order - self._chessboardsize[1]
+                NorthRect.rect = np.array([[rectArea.rect[2,0,:]],[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]]])
+                NorthRect.hasAround[2] = True
+                target.hasAround[0] = True
+                aroundRectList.append(NorthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[1,0,:],target.rect[1,0,:]) < meanR and distofTwoPoints(rectArea.rect[0,0,:],target.rect[2,0,:]) < meanR:
+                EastRect = rectArea
+                EastRect.order = target.order + 1
+                EastRect.rect = np.array([[rectArea.rect[1,0,:]],[rectArea.rect[2,0,:]],[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]]])
+                EastRect.hasAround[3] = True
+                target.hasAround[1] = True
+                aroundRectList.append(EastRect)
+                continue
+
+            elif distofTwoPoints(rectArea.rect[0,0,:],target.rect[3,0,:]) < meanR and distofTwoPoints(rectArea.rect[1,0,:],target.rect[2,0,:]) < meanR:
+                SourthRect = rectArea
+                SourthRect.order = target.order + self._chessboardsize[1]
+                SourthRect.hasAround[0] = True
+                target.hasAround[2] = True
+                aroundRectList.append(SourthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[0,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[1,0,:],target.rect[3,0,:]) < meanR:
+                WestRect = rectArea
+                WestRect.order = target.order - 1
+                WestRect.rect = np.array([[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]],[rectArea.rect[2,0,:]]])
+                WestRect.hasAround[1]=True
+                target.hasAround[3] = True
+                aroundRectList.append(WestRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[1,0,:],target.rect[3,0,:]) < meanR and distofTwoPoints(rectArea.rect[2,0,:],target.rect[2,0,:]) < meanR:
+                SourthRect = rectArea
+                SourthRect.order = target.order + self._chessboardsize[1]
+                SourthRect.rect = np.array([[rectArea.rect[1, 0, :]], [rectArea.rect[2, 0, :]], [rectArea.rect[3, 0, :]],[rectArea.rect[0, 0, :]]])
+                SourthRect.hasAround[0] = True
+                target.hasAround[2] = True
+                aroundRectList.append(SourthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[1,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[2,0,:],target.rect[3,0,:]) < meanR:
+                WestRect = rectArea
+                WestRect.order = target.order - 1
+                WestRect.hasAround[1]=True
+                target.hasAround[3] = True
+                aroundRectList.append(WestRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[2,0,:],target.rect[3,0,:]) < meanR and distofTwoPoints(rectArea.rect[3,0,:],target.rect[2,0,:]) < meanR:
+                SourthRect = rectArea
+                SourthRect.order = target.order + self._chessboardsize[1]
+                SourthRect.rect = np.array([[rectArea.rect[2,0,:]],[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]]])
+                SourthRect.hasAround[0] = True
+                target.hasAround[2] = True
+                aroundRectList.append(SourthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[2,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[3,0,:],target.rect[3,0,:]) < meanR:
+                WestRect = rectArea
+                WestRect.order = target.order - 1
+                WestRect.rect = np.array([[rectArea.rect[1, 0, :]], [rectArea.rect[2, 0, :]], [rectArea.rect[3, 0, :]],[rectArea.rect[0, 0, :]]])
+                WestRect.hasAround[1]=True
+                target.hasAround[3] = True
+                aroundRectList.append(WestRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[3,0,:],target.rect[3,0,:]) < meanR and distofTwoPoints(rectArea.rect[0,0,:],target.rect[2,0,:]) < meanR:
+                SourthRect = rectArea
+                SourthRect.order = target.order + self._chessboardsize[1]
+                SourthRect.rect = np.array([[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]],[rectArea.rect[2,0,:]]])
+                SourthRect.hasAround[0] = True
+                target.hasAround[2] = True
+                aroundRectList.append(SourthRect)
+                continue
+            elif distofTwoPoints(rectArea.rect[3,0,:],target.rect[0,0,:]) < meanR and distofTwoPoints(rectArea.rect[0,0,:],target.rect[3,0,:]) < meanR:
+                WestRect = rectArea
+                WestRect.order = target.order - 1
+                WestRect.rect = np.array([[rectArea.rect[2,0,:]],[rectArea.rect[3,0,:]],[rectArea.rect[0,0,:]],[rectArea.rect[1,0,:]]])
+                WestRect.hasAround[1]=True
+                target.hasAround[3] = True
+                aroundRectList.append(WestRect)
+                continue
+            else:
+                leftAreaGroup.append(rectArea)
+        return  aroundRectList,leftAreaGroup
+
+
+    def __findAround(self,aroundlist,leftlist):
+        if len(aroundlist) > 0:
+            for target in aroundlist:
+                around,left = self.__findRectsAround(target,leftlist)
+            if len(around) > 0 :
+                leftlist =self.__findAround(around,left)
+
+        return leftlist
+
+    def __findCorners(self,goodChessboardGroups,img,scale):
+        chessgroups = copy.deepcopy(goodChessboardGroups)
+        for group in chessgroups:
+            identifiedRect = None
+
+            while(identifiedRect == None or not(identifiedRect.identified) ):
+                index = random.randint(0,len(group)-1)
+                if group[index].identified == True:
+                    identifiedRect = group.pop(index)
+                    break
+
+            identifiedRect.order = 0
+            corners = {}
+            cornersSet = {'LT':0,'RT':self._chessboardsize[1]-1,'LB':(self._chessboardsize[0]-1)*self._chessboardsize[1],'RB':self._chessboardsize[0]*self._chessboardsize[1]-1}
+            self.__findAround([identifiedRect],group)
+            group.append(identifiedRect)
+
+            for rect in group:
+                if rect.iscorner:
+                    if rect.hasAround[0] and rect.hasAround[1] and not(rect.hasAround[2]) and not(rect.hasAround[3]):
+                        cv2.line(img,(rect.rect[0,0,0]*2,rect.rect[0,0,1]*2),(rect.rect[1,0,0]*2,rect.rect[1,0,1]*2),(255,0,0),3)
+                        corners['LB'] = rect
+                    elif rect.hasAround[1] and rect.hasAround[2] and not(rect.hasAround[0]) and not(rect.hasAround[3]):
+                        cv2.line(img,(rect.rect[0,0,0]*2,rect.rect[0,0,1]*2),(rect.rect[1,0,0]*2,rect.rect[1,0,1]*2),(0,255,0),3)
+                        corners['LT'] = rect
+                    elif rect.hasAround[3] and rect.hasAround[2] and not (rect.hasAround[0]) and not (rect.hasAround[1]):
+                        cv2.line(img,(rect.rect[0,0,0]*2,rect.rect[0,0,1]*2),(rect.rect[1,0,0]*2,rect.rect[1,0,1]*2),(0,255,255),3)
+                        corners['RT'] = rect
+                    elif rect.hasAround[0] and rect.hasAround[3] and not(rect.hasAround[1]) and not(rect.hasAround[2]):
+                        cv2.line(img,(rect.rect[0,0,0]*2,rect.rect[0,0,1]*2),(rect.rect[1,0,0]*2,rect.rect[1,0,1]*2),(255,255,0),3)
+                        corners['RB'] = rect
+
+            saveimage(img, 'originimage')
+
+            offsetdict={}
+            mean = 0
+            for key in corners:
+                offsetdict[key] = int(corners[key].order - cornersSet[key])
+                mean += offsetdict[key]
+
+            mean = mean/len(offsetdict)
+            for key in offsetdict:
+                if offsetdict[key] != mean:
+                    print("WRONG CORNER INDEX!!!!!!!")
+
+            for rect in group:
+                rect.order -= mean
+
+
+
     def detect(self,img):
         height, width, channel = img.shape[:3]
         originimg = np.copy(img)
@@ -490,6 +696,7 @@ class CornerDetector(object):
 
         self.__identifyRectArea(goodchessboardGroups,img)
 
+        self.__findCorners(goodchessboardGroups,originimg,resizescale)
 
 
 
@@ -508,7 +715,6 @@ class CornerDetector(object):
 
 
         #return []  #return a list contains all board corners array   [boarder ,index , x , y]
-
         saveimage(chessboardBound, 'chessboardBound')
         saveimage(edge, 'edge')
         # showMat(edgeG, scale, 'edgeG')

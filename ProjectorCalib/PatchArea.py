@@ -10,3 +10,4 @@ class PatchArea(object):
         self.isAssitance = False
         self.possibleChessboardindexdict = {}
         self.identified = False
+        self.hasAround = [False,False,False,False] #[North,East,Sourth,West]
