@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+
 from model import Model
 from CornerDetector import CornerDetector
 from Ulities import showMat
@@ -16,35 +17,40 @@ def main():
     modelPath = '/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/logs/model-573000.tar'
 
 
-    # digitsRec = DigitsRecognizer(modelPath)
-    # detector = CornerDetector(chessboardConfigPath,digitsRec)
-    # detector.detect(img)
+    digitsRec = DigitsRecognizer(modelPath)
+    detector = CornerDetector(chessboardConfigPath,digitsRec)
+    detector.detect(img)
 
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    #
+    # edge = cv2.Canny(img, 100, 155)
+    # cv2.imshow('edge',edge)
+    # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/edge.png', edge)
 
-    # find Harris corners
-    gray = np.float32(gray)
-    dst = cv2.cornerHarris(gray, 2, 3, 0.04)
-    dst = cv2.dilate(dst, None)
-    ret, dst = cv2.threshold(dst, 0.01 * dst.max(), 255, 0)
-    dst = np.uint8(dst)
-
-    # find centroids
-    ret, labels, stats, centroids = cv2.connectedComponentsWithStats(dst)
-
-    # define the criteria to stop and refine the corners
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
-    corners = cv2.cornerSubPix(gray, np.float32(centroids), (5, 5), (-1, -1), criteria)
-
-    # Now draw them
-    res = np.hstack((centroids, corners))
-    res = np.int0(res)
-    img[res[:, 1], res[:, 0]] = [0, 0, 255]
-    img[res[:, 3], res[:, 2]] = [0, 255, 0]
-
-    cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/subpixel5.png', img)
-
+    # # find Harris corners
+    # gray = np.float32(gray)
+    # dst = cv2.cornerHarris(gray, 40, 15, 0.04)
+    # dst = cv2.dilate(dst, None)
+    # ret, dst = cv2.threshold(dst, 0.01 * dst.max(), 255, 0)
+    # dst = np.uint8(dst)
+    #
+    # # find centroids
+    # ret, labels, stats, centroids = cv2.connectedComponentsWithStats(dst)
+    #
+    # # define the criteria to stop and refine the corners
+    # criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+    # corners = cv2.cornerSubPix(gray, np.float32(centroids), (5, 5), (-1, -1), criteria)
+    #
+    # # Now draw them
+    # res = np.hstack((centroids, corners))
+    # res = np.int0(res)
+    # img[res[:, 1], res[:, 0]] = [0, 0, 255]
+    # img[res[:, 3], res[:, 2]] = [0, 255, 0]
+    # cv2.imshow('sss',img)
+    # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/subpixel5.png', img)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
 
 
     # imgR = imS[:,:,2]
