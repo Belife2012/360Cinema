@@ -9,6 +9,10 @@ from PatchArea import PatchArea
 from ChessBoardArea import ChessBoardArea
 import random
 import copy
+import torch
+from torch.autograd import Variable
+
+
 
 def colorEquilibrium(img):
     iBlueGray = np.zeros(shape=(256,1),dtype = np.uint32)
@@ -798,6 +802,72 @@ class CornerDetector(object):
 
         return roix,roiy
 
+    def __computeLineParams(self,roi,edgeImg,cornerindex,ori):
+        xmin = np.min(roi[:,0])
+        xmax = np.max(roi[:,0])
+        ymin = np.min(roi[:,1])
+        ymax = np.max(roi[:,1])
+
+        w = xmax - xmin + 1
+        h = ymax - ymin + 1
+        crop_im = edgeImg[ymin:ymin+h,xmin:xmin+w]
+        mask = np.zeros(crop_im.shape,dtype=np.uint8)
+        roi_corners = np.array([[(roi[0,0]-xmin,roi[0,1]-ymin),(roi[1,0]-xmin,roi[1,1]-ymin),(roi[2,0]-xmin,roi[2,1]-ymin),(roi[3,0]-xmin,roi[3,1]-ymin)]],dtype=np.int32)
+        channel_count = 1
+
+        if len(edgeImg.shape) > 2:
+            channel_count = edgeImg.shape[2]
+
+        ignore_maske_color = (255,)*channel_count
+        cv2.fillPoly(mask,roi_corners,ignore_maske_color)
+        masked_image = cv2.bitwise_and(crop_im,mask)
+
+        # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/patterns/crop'+ori+str(cornerindex)+'.png',crop_im)
+        # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/patterns/mask'+ori+str(cornerindex)+'.png',mask)
+        # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/patterns/clean'+ori+str(cornerindex)+'.png',masked_image)
+
+
+        x_d = []
+        y_d = []
+        for i in range(w):
+            for j in range(h):
+                if masked_image[j,i] > 100:
+                    x_d.append(i+xmin)
+                    y_d.append(j+ymin)
+        x_data = np.array(x_d,dtype=float)
+        y_data = np.array(y_d,dtype=float)
+
+        imax = np.max(x_data)
+        jmax = np.max(y_data)
+        if imax < jmax:
+            imax = jmax
+        x_data = x_data/imax
+        y_data = y_data/imax
+
+        x = Variable(torch.Tensor(x_data),requires_grad = False)
+        y = Variable(torch.Tensor(y_data),requires_grad = False)
+
+        #x*beta+alpha = y
+
+        beta = Variable(torch.randn(1),requires_grad = True)
+        alpha = Variable(torch.randn(1),requires_grad = True)
+        learning_rate = 1e-3
+        optimizer = torch.optim.Adam([beta,alpha],lr=learning_rate)
+        for t in range(1000):
+            y_pred=x.mul(beta).add(alpha)
+            loss = (y_pred - y).pow(2).sum()
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        return np.stack((beta.data.numpy(),alpha.data.numpy()*imax))
+
+    def __computeCrossPoint(self,roix,roiy,edgeImg,cornerindex):
+        #[beta,alpha]
+        paramx = self.__computeLineParams(roix,edgeImg,cornerindex,'x')
+        paramy = self.__computeLineParams(roiy,edgeImg,cornerindex,'y')
+        return [(paramy[1]-paramx[1])/(paramx[0]-paramy[0]),(paramx[0]*paramy[1] - paramy[0]*paramx[1])/(paramx[0]-paramy[0])]
     def __findCorners(self,goodChessboardGroups,img,scale):
         chessgroups = copy.deepcopy(goodChessboardGroups)
         edge = cv2.Canny(img, 100, 155)
@@ -926,21 +996,23 @@ class CornerDetector(object):
                         roiy = roiy * scale
                         roix = roix.astype(int)
                         roiy = roiy.astype(int)
-                        print(roix)
-                        print(roiy)
-                        cornersDict[cornerindex] = 'true'
-
-                        pts = np.array([roix[0,:],roix[1,:],roix[2,:],roix[3,:]],np.int32)
-                        pts = pts.reshape((-1,1,2))
-                        cv2.polylines(img,[pts],True,(0,255,255))
-                        pts = np.array([roiy[0,:],roiy[1,:],roiy[2,:],roiy[3,:]],np.int32)
-                        pts = pts.reshape((-1,1,2))
-                        cv2.polylines(img,[pts],True,(0,255,255))
 
 
-            for rect in group:
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                cv2.putText(img, str(rect.order), (int(rect.rect[0, 0, 0]*scale), int(rect.rect[0, 0, 1]*scale)), font, 1,(255, 255, 255), 2, cv2.LINE_AA)
+
+                        cornersDict[cornerindex] = self.__computeCrossPoint(roix,roiy,edge,cornerindex)
+
+                        cv2.circle(img,(cornersDict[cornerindex][0],cornersDict[cornerindex][1]),2,(0,255,255),1)
+                        # pts = np.array([roix[0,:],roix[1,:],roix[2,:],roix[3,:]],np.int32)
+                        # pts = pts.reshape((-1,1,2))
+                        # cv2.polylines(img,[pts],True,(0,255,255))
+                        # pts = np.array([roiy[0,:],roiy[1,:],roiy[2,:],roiy[3,:]],np.int32)
+                        # pts = pts.reshape((-1,1,2))
+                        # cv2.polylines(img,[pts],True,(0,255,255))
+
+
+            # for rect in group:
+            #     font = cv2.FONT_HERSHEY_SIMPLEX
+            #     cv2.putText(img, str(rect.order), (int(rect.rect[0, 0, 0]*scale), int(rect.rect[0, 0, 1]*scale)), font, 1,(255, 255, 255), 2, cv2.LINE_AA)
             saveimage(img,'result')
 
             chessBoardAreaGroup.append(aBoardAreaGroup)
