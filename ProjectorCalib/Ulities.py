@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-writepath = '/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/'
+writepath = '/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/logitect/result/'
 def showMat(img,scale,name):
     cv2.namedWindow(name, cv2.WINDOW_NORMAL)
     height, width = img.shape[:2]

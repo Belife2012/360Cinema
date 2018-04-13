@@ -11,8 +11,8 @@ import random
 import copy
 import torch
 from torch.autograd import Variable
-
-
+import sys
+sys.setrecursionlimit(10000)
 
 def colorEquilibrium(img):
     iBlueGray = np.zeros(shape=(256,1),dtype = np.uint32)
@@ -97,8 +97,86 @@ def colorEquilibrium(img):
             elif iTempRedGray > 255:
                 iTempRedGray = 255
             img[i,j,2] = iTempRedGray
+def enhanceColor(img):
+    clahe = cv2.createCLAHE(clipLimit=3., tileGridSize=(8, 8))
 
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)  # convert from BGR to LAB color space
+    l, a, b = cv2.split(lab)  # split on 3 different channels
 
+    l2 = clahe.apply(l)  # apply CLAHE to the L-channel
+
+    lab = cv2.merge((l2, a, b))  # merge channels
+    img2 = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+    return img2
+def findnearpt(pt,img):
+    height, width = img.shape[:2]
+    nearpt = []
+    if pt[0] > 0:
+        if img[pt[0]-1,pt[1]] == 255:
+            nearpt.append([pt[0]-1,pt[1]])
+            img[pt[0]-1,pt[1]] = 0
+
+    if pt[0] < height-1:
+        if img[pt[0]+1,pt[1]] == 255:
+            nearpt.append([pt[0]+1,pt[1]])
+            img[pt[0]+1,pt[1]] = 0
+
+    if pt[0]>0 and pt[1]>0:
+        if img[pt[0] - 1, pt[1]-1] == 255:
+            nearpt.append([pt[0] - 1, pt[1]-1])
+            img[pt[0] - 1, pt[1]-1] = 0
+
+    if pt[0] > 0 and pt[1] < width-1:
+        if img[pt[0] - 1, pt[1]+1] == 255:
+            nearpt.append([pt[0] - 1, pt[1]+1])
+            img[pt[0] - 1, pt[1]+1] = 0
+
+    if pt[1] > 0 :
+        if img[pt[0], pt[1]-1] == 255:
+            nearpt.append([pt[0], pt[1]-1])
+            img[pt[0], pt[1]-1] = 0
+
+    if pt[1] < width -1:
+        if img[pt[0], pt[1]+1] == 255:
+            nearpt.append([pt[0] , pt[1]+1])
+            img[pt[0] , pt[1]+1] = 0
+
+    if pt[0] < height -1 and pt[1] > 0:
+        if img[pt[0] + 1, pt[1]-1] == 255:
+            nearpt.append([pt[0] + 1, pt[1]-1])
+            img[pt[0] + 1, pt[1]-1] = 0
+
+    if pt[0] < height-1 and pt[1] < width -1:
+        if img[pt[0] + 1, pt[1]+1] == 255:
+            nearpt.append([pt[0] + 1, pt[1]+1])
+            img[pt[0] + 1, pt[1]+1] = 0
+
+    for i in range(len(nearpt)):
+        nearp = findnearpt(nearpt[i],img)
+        nearpt = nearpt+nearp
+    return nearpt
+
+def removeShortelements(img):
+    dotset = {}
+    index = 0
+    height, width = img.shape[:2]
+    im = img.copy()
+    seglist = []
+
+    for i in range(height):
+        for j in range(width):
+            if im[i,j] == 255:
+                segset = []
+                segset.append([i,j])
+                im[i,j]=0
+                segs = findnearpt([i,j],im)
+                segset = segset+segs
+                seglist.append(segset)
+
+    for i in range(len(seglist)):
+        if len(seglist[i]) < 40:
+            for j in range(len(seglist[i])):
+                img[seglist[i][j][0],seglist[i][j][1]] = 0
 
 def computeSolidity(cnt):
     area = cv2.contourArea(cnt)
@@ -111,7 +189,162 @@ def distofTwoPoints(pnt1,pnt2):
 
 def findmidPoint(pnt1,pnt2):
     return np.array([(pnt1[0]+pnt2[0])/2.0,(pnt1[1]+pnt2[1])/2.0])
+def doRANSAC(datax,datay):
+    maxcount = 0
+    sigma = 0.03
+    iterNum = 1000
+    isVertical = False
+    beta = 0
+    alpha = 0
+    InnerX = []
+    InnerY = []
+    OuterX = []
+    OuterY = []
+    w = np.max(datax)-np.min(datax)
+    h = np.max(datay)-np.min(datay)
 
+    topcount = 10
+    firstsearchingX= []
+    firstsearchingY = []
+
+    secondsearchingX = []
+    secondsearchingY = []
+    if h > w:
+        indexarr = findTopNindex(datay,topcount)
+        for i in range(len(indexarr)):
+            firstsearchingX.append(datax[indexarr[i]])
+            firstsearchingY.append(datay[indexarr[i]])
+        neglist = datay*-1
+        indexarr = findTopNindex(neglist,topcount)
+        for i in range(len(indexarr)):
+            secondsearchingX.append(datax[indexarr[i]])
+            secondsearchingY.append(datay[indexarr[i]])
+
+
+    elif h < w:
+        indexarr = findTopNindex(datax,topcount)
+        for i in range(len(indexarr)):
+            firstsearchingX.append(datax[indexarr[i]])
+            firstsearchingY.append(datay[indexarr[i]])
+        neglist = datax*-1
+        indexarr = findTopNindex(neglist,topcount)
+        for i in range(len(indexarr)):
+            secondsearchingX.append(datax[indexarr[i]])
+            secondsearchingY.append(datay[indexarr[i]])
+
+    else:
+        firstsearchingX = datax
+        firstsearchingY = datay
+
+        secondsearchingX = datax
+        secondsearchingY = datay
+
+        iterNum = 1000000
+
+
+    while(iterNum):
+        iterNum-=iterNum
+        #random.seed(calendar.timegm(time.gmtime()))
+        first = random.randint(0,len(firstsearchingX)-1)
+        second = random.randint(0,len(secondsearchingX)-1)
+        firstpoint = [firstsearchingX[first],firstsearchingY[first]]
+        secondpoint = [secondsearchingX[second],secondsearchingY[second]]
+        _innersX = []
+        _innersY = []
+        _outersX = []
+        _outersY = []
+        _maxcount = 0
+        # if firstpoint[1] != secondpoint[1] and (float(secondpoint[1]-firstpoint[1])/float(secondpoint[0]-firstpoint[0])) > 1:
+        #     #vertical line and beta > 1 reverse it
+        #
+        #     _betaReverse = float(secondpoint[0] - firstpoint[0])/float(secondpoint[1] - firstpoint[1])
+        #     _alphaReverse = (float(secondpoint[1]*firstpoint[0])-float(firstpoint[1]*secondpoint[0]))/float(secondpoint[1] - firstpoint[1])
+        #
+        #     for i in range(len(datax)):
+        #         if i != first and i != second:
+        #             if math.fabs(_betaReverse*datay[i] - datax[i] + _alphaReverse)/math.sqrt(_betaReverse*_betaReverse + 1) <= sigma:
+        #                 _maxcount += 1
+        #                 _innersX.append(datax[i])
+        #                 _innersY.append(datay[i])
+        #             else:
+        #                 _outersX.append(datax[i])
+        #                 _outersY.append(datay[i])
+        #     if _maxcount > maxcount:
+        #         maxcount = _maxcount
+        #         _innersX.append(firstpoint[0])
+        #         _innersX.append(secondpoint[0])
+        #         _innersY.append(firstpoint[1])
+        #         _innersY.append(secondpoint[1])
+        #         InnerX = _innersX
+        #         InnerY = _innersY
+        #         OuterX = _outersX
+        #         OuterY = _outersY
+        #
+        #     if math.fabs(_betaReverse) <= sys.float_info.epsilon:
+        #         beta = sys.float_info.max
+        #         alpha = sys.float_info.min
+        #     else:
+        #         beta = 1/_betaReverse
+        #         alpha = -_alphaReverse/_betaReverse
+        if firstpoint[0] == secondpoint[0] :
+            # vertical line and beta > 1 reverse it
+
+
+            for i in range(len(datax)):
+                if i != first and i != second:
+                    if math.fabs(datax[i] - firstpoint[0])<= sigma:
+                        _maxcount += 1
+                        _innersX.append(datax[i])
+                        _innersY.append(datay[i])
+                    else:
+                        _outersX.append(datax[i])
+                        _outersY.append(datay[i])
+            if _maxcount > maxcount:
+                maxcount = _maxcount
+                _innersX.append(firstpoint[0])
+                _innersX.append(secondpoint[0])
+                _innersY.append(firstpoint[1])
+                _innersY.append(secondpoint[1])
+                InnerX = _innersX
+                InnerY = _innersY
+                OuterX = _outersX
+                OuterY = _outersY
+
+
+            beta = sys.float_info.max
+            alpha = sys.float_info.min
+
+
+
+        else:
+            # nonreverse line
+            _beta = float(secondpoint[1]-firstpoint[1])/float(secondpoint[0]-firstpoint[0])
+            _alpha = (float(secondpoint[0]*firstpoint[1])-float(firstpoint[0]*secondpoint[1]))/float(secondpoint[0]-firstpoint[0])
+            for i in range(len(datax)):
+                if i != first and i != second:
+                    if math.fabs(_beta*datax[i] - datay[i] + _alpha)/math.sqrt(_beta*_beta + 1) <= sigma:
+                        _maxcount += 1
+                        _innersX.append(datax[i])
+                        _innersY.append(datay[i])
+                    else:
+                        _outersX.append(datax[i])
+                        _outersY.append(datay[i])
+            if _maxcount > maxcount:
+                maxcount = _maxcount
+                _innersX.append(firstpoint[0])
+                _innersX.append(secondpoint[0])
+                _innersY.append(firstpoint[1])
+                _innersY.append(secondpoint[1])
+                InnerX = _innersX
+                InnerY = _innersY
+                OuterX = _outersX
+                OuterY = _outersY
+                beta = _beta
+                alpha = _alpha
+
+    return InnerX,InnerY,OuterX,OuterY,beta,alpha
+def findTopNindex(arr,N):
+    return np.argsort(arr)[::-1][:N]
 class CornerDetector(object):
 
     def __init__(self,chessboardConfigPath,digitsDetector):
@@ -150,7 +383,8 @@ class CornerDetector(object):
                 if contourArea/boundingboxArea > 0.3:
                     epsilon = 0.05 * cv2.arcLength(cnts[i], True)
                     approx = cv2.approxPolyDP(cnts[i], epsilon, True)
-                    resultlist.append(approx)
+                    if len(approx) == 4:
+                        resultlist.append(approx)
                     # resultlist.append(cnts[i])
 
 
@@ -229,10 +463,10 @@ class CornerDetector(object):
         return leftRects
 
     def __groupCorners(self,cornersList):
-        self.__oneGroupCorners = []
         resultGroups = []
 
         while len(cornersList) > 0:
+            self.__oneGroupCorners = []
             rootRect = cornersList.pop(0)
             self.__oneGroupCorners.append(rootRect)
             nearlist ,cornersList = self.__findnearRects(rootRect,cornersList)
@@ -589,6 +823,52 @@ class CornerDetector(object):
                 leftlist =self.__findAround(around,left)
 
         return leftlist
+
+    def __find4CrossPoint(self,rectlist, cornerindex):
+        wstep = self._chessboardsize[1]
+        wwstep = wstep + 1
+        offset = math.floor(cornerindex / wwstep)
+
+        if len(rectlist) == 4:
+            for rect in rectlist:
+                if rect.order == cornerindex - wstep - 1 - offset:
+                    p1 = rect.rect[2,0,:]
+                elif rect.order == cornerindex - wstep - offset:
+                    p2 = rect.rect[3,0,:]
+                elif rect.order == cornerindex - offset:
+                    p3 = rect.rect[0,0,:]
+                elif rect.order == cornerindex - 1 - offset:
+                    p4 = rect.rect[1,0,:]
+            p1 = p1.astype(float)
+            p2 = p2.astype(float)
+            p3 = p3.astype(float)
+            p4 = p4.astype(float)
+            #p1,p3 line
+            if p1[0] == p3[0] and  p2[0]!= p4[0]:
+                return np.array([p1[0],(p4[1]-p2[1])*p1[0]/(p4[0]-p2[0])+(p4[0]*p2[1]-p4[1]*p2[0])/(p4[0]-p2[0])])
+            #p2,p4 line
+            elif p1[0] != p3[0] and p2[0] == p4[0]:
+                return np.array([p2[0],(p3[1]-p1[1])*p2[0]/(p3[0]-p1[0])+(p3[0]*p1[1]-p3[1]*p1[0])/(p3[0]-p1[0])])
+
+            elif p1[0] != p3[0] and p3[0] != p4[0]:
+                k1 = (p3[1]-p1[1])/(p3[0]-p1[0])
+                b1 = (p3[0]*p1[1]-p3[1]*p1[0])/(p3[0]-p1[0])
+                k2 = (p4[1]-p2[1])/(p4[0]-p2[0])
+                b2 = (p4[0]*p2[1]-p4[1]*p2[0])/(p4[0]-p2[0])
+                if k2 != k1:
+                    return np.array([(b1-b2)/(k2-k1),(k2*b1-k1*b2)/(k2-k1)])
+                else:
+                    print('Invalid crosspoint')
+                    return np.array([-1, -1])
+            else:
+                print('Invalid crosspoint')
+                return np.array([-1,-1])
+        else:
+            print('rect list length is not 4')
+
+
+
+
     def __findROI(self,rectlist,cornerindex):
         roix = np.zeros(shape=[4,2],dtype='int')
         roiy = np.zeros(shape=[4,2],dtype='int')
@@ -821,11 +1101,9 @@ class CornerDetector(object):
         ignore_maske_color = (255,)*channel_count
         cv2.fillPoly(mask,roi_corners,ignore_maske_color)
         masked_image = cv2.bitwise_and(crop_im,mask)
-
-        # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/patterns/crop'+ori+str(cornerindex)+'.png',crop_im)
-        # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/patterns/mask'+ori+str(cornerindex)+'.png',mask)
-        # cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/patterns/clean'+ori+str(cornerindex)+'.png',masked_image)
-
+        cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/logitect/result/roi/masked_'+str(cornerindex)+'.png',masked_image)
+        print(str(cornerindex)+' is saved...')
+        print(roi)
 
         x_d = []
         y_d = []
@@ -844,15 +1122,30 @@ class CornerDetector(object):
         x_data = x_data/imax
         y_data = y_data/imax
 
+        HInnerX, HInnerY, HOuterX, HOuterY, ibeta, ialpha = doRANSAC(x_data,y_data)
+        initBeta = ibeta
+        initAlpha = ialpha
+        if ibeta > 1 or ibeta < -1:
+            _dataY = np.array([HInnerX]).copy()
+            _dataX = np.array([HInnerY]).copy()
+            initBeta = 1 / ibeta
+            initAlpha = - ialpha / ibeta
+        else:
+            _dataX = np.array([HInnerX])
+            _dataY = np.array([HInnerY])
+        x_data = _dataX
+        y_data = _dataY
+
+
         x = Variable(torch.Tensor(x_data),requires_grad = False)
         y = Variable(torch.Tensor(y_data),requires_grad = False)
 
         #x*beta+alpha = y
 
-        beta = Variable(torch.randn(1),requires_grad = True)
-        alpha = Variable(torch.randn(1),requires_grad = True)
-        learning_rate = 1e-3
-        optimizer = torch.optim.Adam([beta,alpha],lr=learning_rate)
+        beta = Variable(torch.Tensor(np.array([initBeta])),requires_grad = True)
+        alpha = Variable(torch.Tensor(np.array([initAlpha])),requires_grad = True)
+        learning_rate = 1e-4
+        optimizer = torch.optim.SGD([beta,alpha],lr=learning_rate)
         for t in range(1000):
             y_pred=x.mul(beta).add(alpha)
             loss = (y_pred - y).pow(2).sum()
@@ -861,16 +1154,39 @@ class CornerDetector(object):
             loss.backward()
             optimizer.step()
 
-        return np.stack((beta.data.numpy(),alpha.data.numpy()*imax))
+        isVertical = False
+        if math.fabs(beta.data.numpy()) <= sys.float_info.epsilon:
+            isVertical = True
+
+        elif ibeta > 1 or ibeta < -1:
+            tmpBeta = beta
+            beta = 1 / beta
+            alpha = - alpha / tmpBeta
+        return np.stack((beta.data.numpy(),alpha.data.numpy()*imax)),isVertical
 
     def __computeCrossPoint(self,roix,roiy,edgeImg,cornerindex):
         #[beta,alpha]
-        paramx = self.__computeLineParams(roix,edgeImg,cornerindex,'x')
-        paramy = self.__computeLineParams(roiy,edgeImg,cornerindex,'y')
-        return [(paramy[1]-paramx[1])/(paramx[0]-paramy[0]),(paramx[0]*paramy[1] - paramy[0]*paramx[1])/(paramx[0]-paramy[0])]
+        paramx,isverticalX = self.__computeLineParams(roix,edgeImg,cornerindex,'x')
+        paramy,isverticalY = self.__computeLineParams(roiy,edgeImg,cornerindex,'y')
+        print(cornerindex,'==>',paramx,paramy,isverticalX,isverticalY)
+        print('======================================================================')
+
+        if not isverticalX and not isverticalY:
+            return [(paramy[1]-paramx[1])/(paramx[0]-paramy[0]),(paramx[0]*paramy[1] - paramy[0]*paramx[1])/(paramx[0]-paramy[0])]
+        elif isverticalX and not isverticalY:
+            return [paramx[1],paramy[0]*paramx[1]+paramy[1]]
+        elif isverticalY and not isverticalX:
+            return [paramy[1],paramx[0]*paramy[1]+paramx[1]]
+        else:
+            print('WRONG line params')
+
     def __findCorners(self,goodChessboardGroups,img,scale):
         chessgroups = copy.deepcopy(goodChessboardGroups)
-        edge = cv2.Canny(img, 100, 155)
+
+        filterimg = cv2.bilateralFilter(img,11,75,75)
+        edge = cv2.Canny(filterimg, 80, 180)
+        removeShortelements(edge)
+        cv2.imwrite('/home/roby/Desktop/digitClassifier/SVHNClassifier-PyTorch-master/images/logitect/result/roi/edge.png',edge)
         chessBoardAreaGroup = []
         for group in chessgroups:
             identifiedRect = None
@@ -991,6 +1307,11 @@ class CornerDetector(object):
                                     rectlist.append(nrect)
                                 elif (rect.order % wstep == 0) and nrect.order == rect.order + wstep:
                                     rectlist.append(nrect)
+
+                        # if len(rectlist) == 4:
+                            # FourCornersDict[cornerindex] = self.__find4CrossPoint(rectlist,cornerindex)
+                            #cv2.circle(img, (int(FourCornersDict[cornerindex][0]*scale), int(FourCornersDict[cornerindex][1]*scale)), 2,(0, 0, 255), 1)
+
                         roix,roiy = self.__findROI(rectlist,cornerindex)
                         roix = roix * scale
                         roiy = roiy * scale
@@ -1000,7 +1321,6 @@ class CornerDetector(object):
 
 
                         cornersDict[cornerindex] = self.__computeCrossPoint(roix,roiy,edge,cornerindex)
-
                         cv2.circle(img,(cornersDict[cornerindex][0],cornersDict[cornerindex][1]),2,(0,255,255),1)
                         # pts = np.array([roix[0,:],roix[1,:],roix[2,:],roix[3,:]],np.int32)
                         # pts = pts.reshape((-1,1,2))
@@ -1008,7 +1328,7 @@ class CornerDetector(object):
                         # pts = np.array([roiy[0,:],roiy[1,:],roiy[2,:],roiy[3,:]],np.int32)
                         # pts = pts.reshape((-1,1,2))
                         # cv2.polylines(img,[pts],True,(0,255,255))
-
+            aBoardAreaGroup.cornersDict = cornersDict
 
             # for rect in group:
             #     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -1022,12 +1342,14 @@ class CornerDetector(object):
 
     def detect(self,img):
         height, width, channel = img.shape[:3]
+        resizescale = 1.0
+        colorEquilibrium(img)
         originimg = np.copy(img)
-        resizescale = 2.0
+        originimg = enhanceColor(originimg)
+
         img = cv2.resize(img, (int(width / resizescale), int(height / resizescale)))
         height, width, channel = img.shape[:3]
-        img2 = np.copy(img)
-        colorEquilibrium(img)
+
 
         imgR = img[:, :, 2]
         imgG = img[:, :, 1]
@@ -1042,10 +1364,10 @@ class CornerDetector(object):
                 iRed = float(imgR[i, j])
                 iGreen = float(imgG[i, j])
                 iBlue = float(imgB[i, j])
-                if iRed - iGreen > 90  and iRed > 2 * iGreen and iRed > 100 :
+                if iRed - iGreen > 80  and iRed > 1.6 * iGreen and iRed > 100 :
                     imgRed[i, j] = 255
                     #imgGreen[i, j] = 255
-                if iGreen - iRed > 60 :
+                if iGreen - iRed > 40 :
                     imgGreen[i, j] = 255
                 if imgRed[i,j] == 255 or imgGreen[i, j] == 255:
                     chessboardBound[i,j] = 255
@@ -1059,18 +1381,26 @@ class CornerDetector(object):
 
 
 
-        imgRed = cv2.dilate(imgRed,element,dst=None,anchor=(-1,-1),iterations=2)
-        imgGreen = cv2.dilate(imgGreen, element, dst=None, anchor=(-1, -1), iterations=1)
+
+        imgRed = cv2.dilate(imgRed,element,dst=None,anchor=(-1,-1),iterations=3)
+        imgGreen = cv2.dilate(imgGreen, element, dst=None, anchor=(-1, -1), iterations=3)
 
 
-        imgRed = cv2.erode(imgRed,element,dst=None,anchor=(-1,-1),iterations=3)
-        imgGreen = cv2.erode(imgGreen, element, dst=None, anchor=(-1, -1), iterations=4)
+        imgRed = cv2.erode(imgRed,element,dst=None,anchor=(-1,-1),iterations=5)
+        imgGreen = cv2.erode(imgGreen, element, dst=None, anchor=(-1, -1), iterations=5)
+
         saveimage(imgRed,'imgRederod')
         saveimage(imgGreen,'greenerode')
 
-
         imre,contoursR,hierarchyR = cv2.findContours(imgRed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         imgr,contoursG,hierarchyG = cv2.findContours(imgGreen, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
+        contourimg = img.copy()
+        for i in range(len(contoursR)):
+            cv2.drawContours(contourimg,contoursR,i,(0,255,0))
+        for i in range(len(contoursG)):
+            cv2.drawContours(contourimg, contoursG, i, (0, 0, 255))
+        saveimage(contourimg,'contourR')
 
         redPatchAreaList = self.__validateContour(contoursR,height,width)
         redRectGroups = self.__groupCorners(redPatchAreaList)
@@ -1082,11 +1412,6 @@ class CornerDetector(object):
         goodchessboardGroups = self.__verifychessboardGroup(chessboardGroups,chessboardBound)
 
         self.__identifyRectArea(goodchessboardGroups,img)
-
-        self.__findCorners(goodchessboardGroups,originimg,resizescale)
-
-
-
 
         for group in redRectGroups:
             for rect in group:
@@ -1104,17 +1429,26 @@ class CornerDetector(object):
                 cv2.circle(img, (rect[2, 0, 0], rect[2, 0, 1]), 2, (0, 255, 0), 2)
                 cv2.circle(img, (rect[3, 0, 0], rect[3, 0, 1]), 2, (255, 0, 0), 2)
 
-
-
-        #return []  #return a list contains all board corners array   [boarder ,index , x , y]
-        saveimage(chessboardBound, 'chessboardBound')
-        # showMat(edgeG, scale, 'edgeG')
-        # showMat(edgeR, scale, 'edgeR')
-
-        saveimage(imgRed, 'imgRed')
-        saveimage(imgGreen, 'imgGreen')
-
-        saveimage(imgB, 'imgB')
-        saveimage(imgG, 'imgG')
-        saveimage(imgR, 'imgR')
         saveimage(img, 'img')
+
+        return self.__findCorners(goodchessboardGroups,originimg,resizescale)
+
+
+
+        # saveimage(imgRed, 'imgRed')
+        # saveimage(imgGreen, 'imgGreen')
+        #
+        # saveimage(imgB, 'imgB')
+        # saveimage(imgG, 'imgG')
+        # saveimage(imgR, 'imgR')
+        #
+
+        #
+        #
+        #
+        # #return []  #return a list contains all board corners array   [boarder ,index , x , y]
+        # saveimage(chessboardBound, 'chessboardBound')
+        # # showMat(edgeG, scale, 'edgeG')
+        # # showMat(edgeR, scale, 'edgeR')
+        #
+        #

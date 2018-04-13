@@ -36,7 +36,7 @@ def getparams(x_data,y_data,ibeta,ialpha):
 
     initBeta = ibeta
     initAlpha = ialpha
-    if ibeta > 1:
+    if ibeta > 1 or ibeta<-1:
         _dataY = np.array([x_data]).copy()
         _dataX = np.array([y_data]).copy()
         initBeta = 1/ibeta
@@ -60,8 +60,8 @@ def getparams(x_data,y_data,ibeta,ialpha):
     for t in range(1000):
         y_pred = x.mul(beta).add(alpha)
         loss = (y_pred - y).pow(2).sum()
-        if t%999 == 0:
-            print(t,loss.data[0])
+        if t == 999:
+            print('LOSS:',loss.data[0])
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -70,7 +70,7 @@ def getparams(x_data,y_data,ibeta,ialpha):
     if math.fabs(beta.data.numpy()) <= sys.float_info.epsilon:
         isVertical = True
 
-    elif ibeta > 1:
+    elif ibeta > 1 or ibeta < -1:
         tmpBeta = beta
         beta =  1/beta
         alpha = - alpha/tmpBeta
@@ -254,10 +254,12 @@ def main():
         HInnerX, HInnerY, HOuterX, HOuterY, Hbeta, Halpha = doRANSAC(Hdata_x,Hdata_y)
         VInnerX, VInnerY, VOuterX, VOuterY, Vbeta, Valpha = doRANSAC(Vdata_x,Vdata_y)
 
-
+        print(cornerindex,'H')
         Hbeta,Halpha,Hisvertical = getparams(HInnerX,HInnerY,Hbeta,Halpha)
+        print('-----------------')
+        print(cornerindex,'V')
         Vbeta,Valpha,Visvertical = getparams(VInnerX,VInnerY,Vbeta,Valpha)
-
+        print('====================================')
         Hbeta = Hbeta.data.numpy()
         Halpha = Halpha.data.numpy()
         Vbeta = Vbeta.data.numpy()
